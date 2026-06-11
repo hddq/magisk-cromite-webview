@@ -1,0 +1,197 @@
+name: Build Cromite SystemWebView Magisk Module
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+# Ensure only one build runs at a time
+concurrency:
+  group: build-cromite-webview
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout repository ──────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 2. Fetch latest Cromite release version ─────────────────
+      - name: Get latest Cromite release
+        id: cromite
+        run: |
+          echo "Fetching latest Cromite release..."
+          RELEASE_JSON=$(curl -sf \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/uazo/cromite/releases/latest")
+
+          if [ $? -ne 0 ] || [ -z "$RELEASE_JSON" ]; then
+            echo "::error::Failed to fetch latest Cromite release"
+            exit 1
+          fi
+
+          LATEST_TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          echo "Latest Cromite release: $LATEST_TAG"
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
+          # Extract numeric version for versionCode (remove leading 'v', dots, hyphens)
+          VERSION_CODE=$(echo "$LATEST_TAG" | sed 's/^v//' | sed 's/[^0-9]//g')
+          # Trim to fit Android's int32 limit if needed (max 2147483647)
+          VERSION_CODE=$(echo "$VERSION_CODE" | cut -c1-9)
+          echo "versionCode: $VERSION_CODE"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      # ── 3. Check if this version was already built ──────────────
+      - name: Check if already built
+        id: check
+        run: |
+          LATEST_TAG="${{ steps.cromite.outputs.tag }}"
+
+          # Check VERSION file
+          CURRENT_VERSION=""
+          if [ -f VERSION ]; then
+            CURRENT_VERSION=$(cat VERSION)
+          fi
+
+          echo "Current built version: ${CURRENT_VERSION:-none}"
+          echo "Latest Cromite version: $LATEST_TAG"
+
+          if [ "$CURRENT_VERSION" = "$LATEST_TAG" ]; then
+            echo "Already up to date. Skipping build."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version available. Proceeding with build."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 4. Download Cromite SystemWebView APK ──────────────────
+      - name: Download Cromite SystemWebView APK
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          TAG="${{ steps.cromite.outputs.tag }}"
+          APK_URL="https://github.com/uazo/cromite/releases/download/${TAG}/arm64_SystemWebView.apk"
+
+          echo "Downloading SystemWebView APK from: $APK_URL"
+          curl -L -f -o module/system/app/webview/webview.apk "$APK_URL"
+
+          if [ ! -s module/system/app/webview/webview.apk ]; then
+            echo "::error::Downloaded APK is empty or missing"
+            exit 1
+          fi
+
+          APK_SIZE=$(stat -c%s module/system/app/webview/webview.apk)
+          echo "APK downloaded successfully (${APK_SIZE} bytes)"
+
+      # ── 5. Update module.prop with Cromite version ──────────────
+      - name: Update module.prop
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          TAG="${{ steps.cromite.outputs.tag }}"
+          VERSION_CODE="${{ steps.cromite.outputs.version_code }}"
+          REPO="${{ github.repository }}"
+
+          sed -i "s|^version=.*|version=${TAG}|" module/module.prop
+          sed -i "s|^versionCode=.*|versionCode=${VERSION_CODE}|" module/module.prop
+          sed -i "s|^updateJson=.*|updateJson=https://raw.githubusercontent.com/${REPO}/main/update.json|" module/module.prop
+
+          echo "Updated module.prop:"
+          cat module/module.prop
+
+      # ── 6. Build Magisk module zip ──────────────────────────────
+      - name: Build Magisk module zip
+        if: steps.check.outputs.skip == 'false'
+        id: build
+        run: |
+          TAG="${{ steps.cromite.outputs.tag }}"
+          ZIP_NAME="CromiteSystemWebView-${TAG}.zip"
+
+          cd module
+
+          # Ensure shell scripts are executable
+          chmod +x customize.sh service.sh post-fs-data.sh 2>/dev/null || true
+          chmod +x META-INF/com/google/android/update-binary
+
+          # Build the zip (exclude .gitkeep files)
+          zip -r "../${ZIP_NAME}" . \
+            -x '*.gitkeep' \
+            -x '*.git*'
+
+          cd ..
+
+          ZIP_SIZE=$(stat -c%s "$ZIP_NAME")
+          echo "Module zip built: $ZIP_NAME (${ZIP_SIZE} bytes)"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      # ── 7. Update update.json ───────────────────────────────────
+      - name: Update update.json
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          TAG="${{ steps.cromite.outputs.tag }}"
+          VERSION_CODE="${{ steps.cromite.outputs.version_code }}"
+          ZIP_NAME="${{ steps.build.outputs.zip_name }}"
+          REPO="${{ github.repository }}"
+
+          jq -n \
+            --arg version "$TAG" \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg zipUrl "https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}" \
+            --arg changelog "https://github.com/${REPO}/releases/tag/${TAG}" \
+            '{version: $version, versionCode: $versionCode, zipUrl: $zipUrl, changelog: $changelog}' \
+            > update.json
+
+          echo "Updated update.json:"
+          cat update.json
+
+      # ── 8. Update VERSION file ──────────────────────────────────
+      - name: Update VERSION file
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          echo "${{ steps.cromite.outputs.tag }}" > VERSION
+
+      # ── 9. Commit updated files back to repo ────────────────────
+      - name: Commit version tracking files
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add VERSION update.json
+          git commit -m "chore: update to Cromite ${{ steps.cromite.outputs.tag }}" || echo "No changes to commit"
+          git push
+
+      # ── 10. Create GitHub Release ───────────────────────────────
+      - name: Create GitHub Release
+        if: steps.check.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.cromite.outputs.tag }}
+          name: Cromite SystemWebView ${{ steps.cromite.outputs.tag }}
+          body: |
+            ## Cromite SystemWebView — Magisk Module
+
+            Automated build from [Cromite ${{ steps.cromite.outputs.tag }}](https://github.com/uazo/cromite/releases/tag/${{ steps.cromite.outputs.tag }}).
+
+            ### Installation
+            1. Download the `.zip` file below
+            2. Flash it via **Magisk Manager** → Modules → Install from storage
+            3. Reboot
+
+            ### Auto-updates
+            This module supports Magisk Manager's built-in update checker.
+            Updates will appear automatically in the Modules tab.
+
+            ---
+            *Built automatically by GitHub Actions*
+          files: ${{ steps.build.outputs.zip_name }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
