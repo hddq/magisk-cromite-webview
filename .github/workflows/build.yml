@@ -43,10 +43,8 @@ jobs:
           echo "Latest Cromite release: $LATEST_TAG"
           echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
 
-          # Extract numeric version for versionCode (remove leading 'v', dots, hyphens)
-          VERSION_CODE=$(echo "$LATEST_TAG" | sed 's/^v//' | sed 's/[^0-9]//g')
-          # Trim to fit Android's int32 limit if needed (max 2147483647)
-          VERSION_CODE=$(echo "$VERSION_CODE" | cut -c1-9)
+          # Use current Unix timestamp as versionCode (monotonically increasing)
+          VERSION_CODE=$(date +%s)
           echo "versionCode: $VERSION_CODE"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
