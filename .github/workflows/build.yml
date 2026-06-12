@@ -183,7 +183,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.cromite.outputs.tag }}
-          name: Cromite SystemWebView ${{ steps.cromite.outputs.tag }}
+          name: ${{ steps.cromite.outputs.tag }}
           body: |
             ## Cromite SystemWebView — Magisk Module
 
