@@ -1,5 +1,9 @@
 # Cromite SystemWebView — Magisk Module
 
+![Build Status](https://github.com/hddq/magisk-cromite-webview/actions/workflows/build.yml/badge.svg)
+![Latest Release](https://img.shields.io/github/v/release/hddq/magisk-cromite-webview)
+![Downloads](https://img.shields.io/github/downloads/hddq/magisk-cromite-webview/total)
+
 A Magisk module that replaces the stock Android System WebView with [Cromite WebView](https://github.com/uazo/cromite).
 
 ## Requirements
