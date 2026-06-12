@@ -54,20 +54,16 @@ jobs:
         run: |
           LATEST_TAG="${{ steps.cromite.outputs.tag }}"
 
-          # Check VERSION file
-          CURRENT_VERSION=""
-          if [ -f VERSION ]; then
-            CURRENT_VERSION=$(cat VERSION)
-          fi
+          # Check if a release with this tag already exists
+          RELEASE=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${LATEST_TAG}")
 
-          echo "Current built version: ${CURRENT_VERSION:-none}"
-          echo "Latest Cromite version: $LATEST_TAG"
-
-          if [ "$CURRENT_VERSION" = "$LATEST_TAG" ]; then
-            echo "Already up to date. Skipping build."
+          if [ -n "$RELEASE" ]; then
+            echo "Release ${LATEST_TAG} already exists. Skipping build."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "New version available. Proceeding with build."
+            echo "No release for ${LATEST_TAG}. Proceeding with build."
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -160,11 +156,7 @@ jobs:
           echo "Updated update.json:"
           cat update.json
 
-      # ── 8. Update VERSION file ──────────────────────────────────
-      - name: Update VERSION file
-        if: steps.check.outputs.skip == 'false'
-        run: |
-          echo "${{ steps.cromite.outputs.tag }}" > VERSION
+
 
       # ── 9. Commit updated files back to repo ────────────────────
       - name: Commit version tracking files
@@ -173,7 +165,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add VERSION update.json
+          git add update.json
           git commit -m "chore: update to Cromite ${{ steps.cromite.outputs.tag }}" || echo "No changes to commit"
           git push
 
