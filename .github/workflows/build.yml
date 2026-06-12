@@ -101,6 +101,17 @@ jobs:
           sed -i "s|^versionCode=.*|versionCode=${VERSION_CODE}|" module/module.prop
           sed -i "s|^updateJson=.*|updateJson=https://raw.githubusercontent.com/${REPO}/main/update.json|" module/module.prop
 
+          # Extract minSdkVersion from the APK and set minApi
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -n1)
+          MIN_SDK=$("$AAPT2" dump badging module/system/app/webview/webview.apk \
+            | grep -oP "minSdkVersion:'\K[0-9]+" || true)
+          if [ -n "$MIN_SDK" ]; then
+            echo "Detected minSdkVersion: $MIN_SDK"
+            sed -i "s|^minApi=.*|minApi=${MIN_SDK}|" module/module.prop
+          else
+            echo "::warning::Could not detect minSdkVersion, leaving minApi unchanged"
+          fi
+
           echo "Updated module.prop:"
           cat module/module.prop
 
