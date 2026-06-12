@@ -57,7 +57,7 @@ jobs:
           # Check if a release with this tag already exists
           RELEASE=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${LATEST_TAG}")
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${LATEST_TAG}" || true)
 
           if [ -n "$RELEASE" ]; then
             echo "Release ${LATEST_TAG} already exists. Skipping build."
