@@ -53,7 +53,7 @@ The GitHub Actions workflow (`.github/workflows/build.yml`):
 
 1. Runs on a 24-hour schedule (04:00 UTC daily) + manual dispatch
 2. Queries the [Cromite releases API](https://api.github.com/repos/uazo/cromite/releases/latest) for the latest tag
-3. Compares against the `VERSION` file in the repo
+3. Checks if a GitHub Release with that tag already exists
 4. If a new version exists:
    - Downloads `arm64_SystemWebView.apk`
    - Patches `module.prop` with the new version/versionCode
