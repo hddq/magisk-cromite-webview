@@ -4,6 +4,9 @@
 ![Latest Release](https://img.shields.io/github/v/release/hddq/magisk-cromite-webview)
 ![Downloads](https://img.shields.io/github/downloads/hddq/magisk-cromite-webview/total)
 
+> [!WARNING]
+> Cromite is not actively maintained. I recommend moving to [Vanadium WebView](https://github.com/hddq/magisk-vanadium-webview) instead.
+
 A Magisk module that replaces the stock Android System WebView with [Cromite WebView](https://github.com/uazo/cromite).
 
 ## Requirements
